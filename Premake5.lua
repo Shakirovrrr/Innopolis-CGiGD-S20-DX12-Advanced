@@ -27,7 +27,7 @@ workspace "Advanced technics"
       files { "src/renderer.h", "src/renderer.cpp"}
       files { "libs/tinyobjloader/tiny_obj_loader.h"}
       files { "libs/stb/stb_image.h" }
-      --files { "src/model_loader.h", "src/model_loader.cpp"}
+      files { "src/model_loader.h", "src/model_loader.cpp"}
       files { "src/win32_window.h", "src/win32_window.cpp"}
       files { "src/win32_window_main.cpp" }
       postbuildcommands {
