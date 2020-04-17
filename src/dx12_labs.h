@@ -17,25 +17,23 @@
 #include <DirectXMath.h>
 
 #include <iostream>
+#include <chrono>
 
 #include <exception>
 
 using namespace Microsoft::WRL;
+using namespace std::chrono;
 
-namespace DX
-{
-	class com_exception : public std::exception
-	{
+namespace DX {
+	class com_exception : public std::exception {
 	public:
-		com_exception(HRESULT hr) : result(hr)
-		{
+		com_exception(HRESULT hr) : result(hr) {
 			what_str = std::wstring(L"Failure with HRESULT of " +
 				std::to_wstring(static_cast<unsigned int>(result)) +
 				L"\n");
 		}
 
-		const LPCWSTR get_wstring() const
-		{
+		const LPCWSTR get_wstring() const {
 			return what_str.c_str();
 		}
 
@@ -45,10 +43,8 @@ namespace DX
 		std::wstring what_str;
 	};
 
-	inline void ThrowIfFailed(HRESULT hr)
-	{
-		if (FAILED(hr))
-		{
+	inline void ThrowIfFailed(HRESULT hr) {
+		if (FAILED(hr)) {
 			throw com_exception(hr);
 		}
 	}
@@ -57,8 +53,14 @@ namespace DX
 using namespace DX;
 using namespace DirectX;
 
-struct ColorVertex
-{
+struct ColorVertex {
 	XMFLOAT3 position;
 	XMFLOAT4 color;
+};
+
+struct FullVertex {
+	XMFLOAT3 position;
+	XMFLOAT3 diffuseColor;
+	XMFLOAT3 normal;
+	XMFLOAT2 texcoord;
 };

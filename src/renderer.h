@@ -1,8 +1,8 @@
 #pragma once
 
 #include "dx12_labs.h"
-
 #include "win32_window.h"
+#include "model_loader.h"
 
 class Renderer
 {
@@ -15,7 +15,6 @@ public:
 		fence_value = 0;
 		fence_event = nullptr;
 		aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
-		verteces.clear();
 
 		world_view_projection = XMMatrixIdentity();
 		world = XMMatrixTranslation(0, 0, 0) * XMMatrixScaling(1.0, 1.0, 1.0);
@@ -24,6 +23,10 @@ public:
 		//projection = XMMatrixIdentity();
 		projection = XMMatrixPerspectiveFovLH(60.f*XM_PI/180.f, aspect_ratio, 0.001f, 100.f);
 		//projection = XMMatrixOrthographicLH(width, height, 0.1f, 10.f);
+
+		//obj_file = "breakfast_room.obj";
+		obj_file = "CornellBox-Original.obj";
+		//obj_file = "cube.obj";
 	};
 	virtual ~Renderer() {};
 
@@ -46,14 +49,18 @@ protected:
 
 	static const UINT frame_number = 2;
 
+	std::string obj_file;
+
 	// Pipeline objects.
 	ComPtr<ID3D12Device> device;
 	ComPtr<ID3D12CommandQueue> command_queue;
 	ComPtr<IDXGISwapChain3> swap_chain;
 	ComPtr<ID3D12DescriptorHeap> rtv_heap;
-	ComPtr<ID3D12DescriptorHeap> cbv_heap;
+	ComPtr<ID3D12DescriptorHeap> cbv_srv_heap;
+	ComPtr<ID3D12DescriptorHeap> dsv_heap;
 	UINT rtv_descriptor_size;
 	ComPtr<ID3D12Resource> render_targets[frame_number];
+	ComPtr<ID3D12Resource> depth_stencil;
 	ComPtr<ID3D12CommandAllocator> command_allocator;
 	ComPtr<ID3D12PipelineState> pipeline_state;
 	ComPtr<ID3D12GraphicsCommandList> command_list;
@@ -63,9 +70,20 @@ protected:
 	CD3DX12_RECT scissor_rect;
 
 	// Resources
-	std::vector<ColorVertex> verteces;
+	//std::vector<ColorVertex> verteces;
 	ComPtr<ID3D12Resource> vertex_buffer;
+	ComPtr<ID3D12Resource> upload_vertex_buffer;
 	D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
+
+	ComPtr<ID3D12Resource> index_buffer;
+	ComPtr<ID3D12Resource> upload_index_buffer;
+	D3D12_INDEX_BUFFER_VIEW index_buffer_view;
+
+	ComPtr<ID3D12Resource> texture;
+	ComPtr<ID3D12Resource> upload_texture;
+
+
+	ModelLoader modelLoader;
 
 	XMMATRIX world_view_projection;
 	ComPtr<ID3D12Resource> constant_buffer;
@@ -92,6 +110,12 @@ protected:
 	XMVECTOR eye_position;
 	float angle = 0.f;
 
-	float delta_forward = 0.f;
-	float delta_rotation = 0.f;
+	float velocityForward = 0.f;
+	float velocityRotation = 0.f;
+
+	high_resolution_clock::time_point baseTime;
+
+	unsigned int max_draw_call_num;
+
+	std::wstring GetBinPath(std::wstring shader_file);
 };
