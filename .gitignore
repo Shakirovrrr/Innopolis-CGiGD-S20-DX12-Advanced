@@ -4,8 +4,8 @@ bin/
 obj/
 results/
 models/
+libs/
 
 *.sln
-*.vcxproj
-*.vcxproj.user
-*.vcxproj.user.filters
+*.vcxproj*
+*.exe
