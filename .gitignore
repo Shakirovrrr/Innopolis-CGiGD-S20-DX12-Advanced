@@ -3,7 +3,9 @@
 bin/
 obj/
 results/
+models/
 
 *.sln
 *.vcxproj
 *.vcxproj.user
+*.vcxproj.user.filters
