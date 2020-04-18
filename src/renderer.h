@@ -27,6 +27,8 @@ public:
 		obj_file = "breakfast_room.obj";
 		//obj_file = "CornellBox-Original.obj";
 		//obj_file = "cube.obj";
+
+		light = XMVECTOR({0,2,2});
 	};
 	virtual ~Renderer() {};
 
@@ -110,9 +112,14 @@ protected:
 
 	XMVECTOR eye_position;
 	float angle = 0.f;
+	XMVECTOR light;
 
 	float velocityForward = 0.f;
 	float velocityRotation = 0.f;
+
+	float lightVelocityX = 0.0f;
+	float lightVelocityY = 0.0f;
+	float lightVelocityZ = 0.0f;
 
 	high_resolution_clock::time_point baseTime;
 

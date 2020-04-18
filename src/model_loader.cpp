@@ -64,7 +64,7 @@ HRESULT ModelLoader::LoadModel(std::string path) {
 					tinyobj::real_t vz = -1.0f - attrib.vertices[3 * idx.vertex_index + 2];
 					tinyobj::real_t nx = (idx.normal_index > -1) ? attrib.normals[3 * idx.normal_index + 0] : 0.0f;
 					tinyobj::real_t ny = (idx.normal_index > -1) ? attrib.normals[3 * idx.normal_index + 1] : 0.0f;
-					tinyobj::real_t nz = (idx.normal_index > -1) ? -1.0f - attrib.normals[3 * idx.normal_index + 2] : 0.0f;
+					tinyobj::real_t nz = (idx.normal_index > -1) ? -1.0f * attrib.normals[3 * idx.normal_index + 2] : 0.0f;
 					tinyobj::real_t tu = (idx.texcoord_index > -1) ? attrib.texcoords[2 * idx.texcoord_index + 0] : 0.0f;
 					tinyobj::real_t tv = (idx.texcoord_index > -1) ? 1.0f - attrib.texcoords[2 * idx.texcoord_index + 1] : 0.0f;
 

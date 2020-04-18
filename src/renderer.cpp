@@ -18,6 +18,8 @@ void Renderer::OnUpdate() {
 	angle += velocityRotation * elapsedTime.count();
 	eye_position += XMVECTOR({sin(angle), 0.f, cos(angle)}) * velocityForward * elapsedTime.count();
 
+	light += XMVECTOR({lightVelocityX, lightVelocityY, lightVelocityZ}) * elapsedTime.count();
+
 	XMVECTOR focus_position = eye_position + XMVECTOR({sin(angle), 0.f, cos(angle)});
 
 	XMVECTOR up_direction = XMVECTOR({0.0f, 1.f, 0.f});
@@ -31,6 +33,7 @@ void Renderer::OnUpdate() {
 	//world_view_projection = view * world;
 	//world_view_projection = world;
 	memcpy(constant_buffer_data_begin, &world_view_projection, sizeof(world_view_projection));
+	memcpy(constant_buffer_data_begin + sizeof(world_view_projection), &light, sizeof(light));
 }
 
 void Renderer::OnRender() {
@@ -51,18 +54,38 @@ void Renderer::OnDestroy() {
 
 void Renderer::OnKeyDown(UINT8 key) {
 	switch (key) {
-		case 0x41 - 'a' + 'd':
+		case 'D':
 			velocityRotation = 1.0f;
 			break;
-		case 0x41 - 'a' + 'a':
+		case 'A':
 			velocityRotation = -1.0f;
 			break;
-		case 0x41 - 'a' + 'w':
+		case 'W':
 			velocityForward = 1.0f;
 			break;
-		case 0x41 - 'a' + 's':
+		case 'S':
 			velocityForward = -1.0f;
 			break;
+
+		case 'I':
+			lightVelocityZ = 1.0f;
+			break;
+		case 'K':
+			lightVelocityZ = -1.0f;
+			break;
+		case 'L':
+			lightVelocityY = 1.0f;
+			break;
+		case 'j':
+			lightVelocityY = -1.0f;
+			break;
+		case 'O':
+			lightVelocityX = 1.0f;
+			break;
+		case 'U':
+			lightVelocityX = -1.0f;
+			break;
+
 		case VK_OEM_MINUS:
 			if (max_draw_call_num > 0) {
 				max_draw_call_num--;
@@ -85,18 +108,38 @@ void Renderer::OnKeyDown(UINT8 key) {
 
 void Renderer::OnKeyUp(UINT8 key) {
 	switch (key) {
-		case 0x41 - 'a' + 'd':
+		case 'D':
 			velocityRotation = 0.0f;
 			break;
-		case 0x41 - 'a' + 'a':
+		case 'A':
 			velocityRotation = 0.0f;
 			break;
-		case 0x41 - 'a' + 'w':
+		case 'W':
 			velocityForward = 0.0f;
 			break;
-		case 0x41 - 'a' + 's':
+		case 'S':
 			velocityForward = 0.0f;
 			break;
+
+		case 'I':
+			lightVelocityZ = 0.0f;
+			break;
+		case 'K':
+			lightVelocityZ = 0.0f;
+			break;
+		case 'L':
+			lightVelocityY = 0.0f;
+			break;
+		case 'j':
+			lightVelocityY = 0.0f;
+			break;
+		case 'O':
+			lightVelocityX = 0.0f;
+			break;
+		case 'U':
+			lightVelocityX = 0.0f;
+			break;
+
 		default:
 			break;
 	}
@@ -435,7 +478,7 @@ void Renderer::LoadAssets() {
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_descriptor = {};
 	cbv_descriptor.BufferLocation = constant_buffer->GetGPUVirtualAddress();
-	cbv_descriptor.SizeInBytes = (sizeof(world_view_projection) + 255) & ~255;
+	cbv_descriptor.SizeInBytes = (sizeof(world_view_projection) + sizeof(light) + 255) & ~255;
 	cbv_srv_heap_handle.InitOffsetted(cbv_srv_heap->GetCPUDescriptorHandleForHeapStart(), 0, cbv_srv_descriptor_size);
 	device->CreateConstantBufferView(&cbv_descriptor, cbv_srv_heap_handle);
 	cbv_srv_heap_handle.Offset(1, cbv_srv_descriptor_size);
@@ -443,6 +486,7 @@ void Renderer::LoadAssets() {
 	CD3DX12_RANGE read_range(0, 0);
 	ThrowIfFailed(constant_buffer->Map(0, &read_range, reinterpret_cast<void **>(&constant_buffer_data_begin)));
 	memcpy(constant_buffer_data_begin, &world_view_projection, sizeof(world_view_projection));
+	memcpy(constant_buffer_data_begin + sizeof(world_view_projection), &light, sizeof(light));
 
 	// Create empty SRV
 	D3D12_SHADER_RESOURCE_VIEW_DESC emptySrvDescriptor = {};
