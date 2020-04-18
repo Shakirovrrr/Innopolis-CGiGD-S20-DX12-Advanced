@@ -24,8 +24,8 @@ public:
 		projection = XMMatrixPerspectiveFovLH(60.f*XM_PI/180.f, aspect_ratio, 0.001f, 100.f);
 		//projection = XMMatrixOrthographicLH(width, height, 0.1f, 10.f);
 
-		//obj_file = "breakfast_room.obj";
-		obj_file = "CornellBox-Original.obj";
+		obj_file = "breakfast_room.obj";
+		//obj_file = "CornellBox-Original.obj";
 		//obj_file = "cube.obj";
 	};
 	virtual ~Renderer() {};
@@ -62,7 +62,8 @@ protected:
 	ComPtr<ID3D12Resource> render_targets[frame_number];
 	ComPtr<ID3D12Resource> depth_stencil;
 	ComPtr<ID3D12CommandAllocator> command_allocator;
-	ComPtr<ID3D12PipelineState> pipeline_state;
+	ComPtr<ID3D12PipelineState> pipeline_state_color;
+	ComPtr<ID3D12PipelineState> pipeline_state_texture;
 	ComPtr<ID3D12GraphicsCommandList> command_list;
 
 	ComPtr<ID3D12RootSignature> root_signature;
@@ -79,9 +80,9 @@ protected:
 	ComPtr<ID3D12Resource> upload_index_buffer;
 	D3D12_INDEX_BUFFER_VIEW index_buffer_view;
 
-	ComPtr<ID3D12Resource> texture;
-	ComPtr<ID3D12Resource> upload_texture;
-
+	std::vector<ComPtr<ID3D12Resource>> textures;
+	std::vector<ComPtr<ID3D12Resource>> upload_textures;
+	std::vector<unsigned int> per_material_srv_offset;
 
 	ModelLoader modelLoader;
 

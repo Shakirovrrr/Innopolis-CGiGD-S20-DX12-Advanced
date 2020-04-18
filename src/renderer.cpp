@@ -151,6 +151,10 @@ void Renderer::LoadPipeline() {
 
 	frame_index = swap_chain->GetCurrentBackBufferIndex();
 
+	ThrowIfFailed(modelLoader.LoadModel(obj_file));
+	max_draw_call_num = modelLoader.GetMaterialNumber();
+	per_material_srv_offset.resize(modelLoader.GetMaterialNumber());
+
 	// Create descriptor heap for render target view
 
 	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_descriptor = {};
@@ -167,7 +171,7 @@ void Renderer::LoadPipeline() {
 	ThrowIfFailed(device->CreateDescriptorHeap(&dsv_heap_descriptor, IID_PPV_ARGS(&dsv_heap)));
 
 	D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_heap_descriptor = {};
-	cbv_srv_heap_descriptor.NumDescriptors = 1 + 1; // 1 CBV + 1 SRV
+	cbv_srv_heap_descriptor.NumDescriptors = 2 + modelLoader.GetTextureNumber(); // 1 CBV + 1 empty SRV + n SRV for textures
 	cbv_srv_heap_descriptor.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbv_srv_heap_descriptor.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	ThrowIfFailed(device->CreateDescriptorHeap(&cbv_srv_heap_descriptor, IID_PPV_ARGS(&cbv_srv_heap)));
@@ -253,15 +257,22 @@ void Renderer::LoadAssets() {
 
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_descriptor,
-		rs_feature_data.HighestVersion, &signature, &error));
+	HRESULT serializeResult = D3DX12SerializeVersionedRootSignature(&root_signature_descriptor,
+		rs_feature_data.HighestVersion, &signature, &error);
+
+	if (error) {
+		OutputDebugStringA((char *) error->GetBufferPointer());
+	}
+
+	ThrowIfFailed(serializeResult);
 	ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(),
 		signature->GetBufferSize(), IID_PPV_ARGS(&root_signature)));
 
 
 	// Create full PSO
 	ComPtr<ID3DBlob> vertex_shader;
-	ComPtr<ID3DBlob> pixel_shader;
+	ComPtr<ID3DBlob> pixel_shader_color;
+	ComPtr<ID3DBlob> pixel_shader_texture;
 
 	UINT compile_flags = 0;
 #ifdef _DEBUG
@@ -270,10 +281,25 @@ void Renderer::LoadAssets() {
 
 
 	std::wstring shader_path = GetBinPath(std::wstring(L"shaders.hlsl"));
-	ThrowIfFailed(D3DCompileFromFile(shader_path.c_str(), nullptr, nullptr,
-		"VSMain", "vs_5_0", compile_flags, 0, &vertex_shader, &error));
-	ThrowIfFailed(D3DCompileFromFile(shader_path.c_str(), nullptr, nullptr,
-		"PSMain", "ps_5_0", compile_flags, 0, &pixel_shader, &error));
+	serializeResult = D3DCompileFromFile(shader_path.c_str(), nullptr, nullptr,
+		"VSMain", "vs_5_0", compile_flags, 0, &vertex_shader, &error);
+	if (error) {
+		OutputDebugStringA((char *) error->GetBufferPointer());
+	}
+
+	serializeResult = D3DCompileFromFile(shader_path.c_str(), nullptr, nullptr,
+		"PSMain_color", "ps_5_0", compile_flags, 0, &pixel_shader_color, &error);
+	if (error) {
+		OutputDebugStringA((char *) error->GetBufferPointer());
+	}
+
+	serializeResult = D3DCompileFromFile(shader_path.c_str(), nullptr, nullptr,
+		"PSMain_texture", "ps_5_0", compile_flags, 0, &pixel_shader_texture, &error);
+	if (error) {
+		OutputDebugStringA((char *) error->GetBufferPointer());
+	}
+
+	ThrowIfFailed(serializeResult);
 
 	D3D12_INPUT_ELEMENT_DESC input_element_descriptors[] =
 	{
@@ -287,7 +313,7 @@ void Renderer::LoadAssets() {
 	pso_descriptor.InputLayout = {input_element_descriptors, _countof(input_element_descriptors)};
 	pso_descriptor.pRootSignature = root_signature.Get();
 	pso_descriptor.VS = CD3DX12_SHADER_BYTECODE(vertex_shader.Get());
-	pso_descriptor.PS = CD3DX12_SHADER_BYTECODE(pixel_shader.Get());
+	pso_descriptor.PS = CD3DX12_SHADER_BYTECODE(pixel_shader_color.Get());
 	pso_descriptor.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	pso_descriptor.RasterizerState.FrontCounterClockwise = TRUE;
 	//pso_descriptor.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
@@ -305,15 +331,17 @@ void Renderer::LoadAssets() {
 	pso_descriptor.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso_descriptor.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	pso_descriptor.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&pso_descriptor, IID_PPV_ARGS(&pipeline_state)));
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&pso_descriptor, IID_PPV_ARGS(&pipeline_state_color)));
+
+	pso_descriptor.PS = CD3DX12_SHADER_BYTECODE(pixel_shader_texture.Get());
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&pso_descriptor, IID_PPV_ARGS(&pipeline_state_texture)));
 
 	// Create command list
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, command_allocator.Get(),
-		pipeline_state.Get(), IID_PPV_ARGS(&command_list)));
+		pipeline_state_color.Get(), IID_PPV_ARGS(&command_list)));
 	//ThrowIfFailed(command_list->Close());
 
-	ThrowIfFailed(modelLoader.LoadModel(obj_file));
-	max_draw_call_num = modelLoader.GetMaterialNumber();
+
 
 	const UINT vertex_buffer_size = modelLoader.GetVertexBufferSize();
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -408,6 +436,7 @@ void Renderer::LoadAssets() {
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_descriptor = {};
 	cbv_descriptor.BufferLocation = constant_buffer->GetGPUVirtualAddress();
 	cbv_descriptor.SizeInBytes = (sizeof(world_view_projection) + 255) & ~255;
+	cbv_srv_heap_handle.InitOffsetted(cbv_srv_heap->GetCPUDescriptorHandleForHeapStart(), 0, cbv_srv_descriptor_size);
 	device->CreateConstantBufferView(&cbv_descriptor, cbv_srv_heap_handle);
 	cbv_srv_heap_handle.Offset(1, cbv_srv_descriptor_size);
 
@@ -415,62 +444,92 @@ void Renderer::LoadAssets() {
 	ThrowIfFailed(constant_buffer->Map(0, &read_range, reinterpret_cast<void **>(&constant_buffer_data_begin)));
 	memcpy(constant_buffer_data_begin, &world_view_projection, sizeof(world_view_projection));
 
+	// Create empty SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC emptySrvDescriptor = {};
+	emptySrvDescriptor.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	emptySrvDescriptor.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	emptySrvDescriptor.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	emptySrvDescriptor.Texture2D.MipLevels = 1;
+	emptySrvDescriptor.Texture2D.MostDetailedMip = 0;
+	emptySrvDescriptor.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	cbv_srv_heap_handle.InitOffsetted(cbv_srv_heap->GetCPUDescriptorHandleForHeapStart(), 1, cbv_srv_descriptor_size);
+	device->CreateShaderResourceView(nullptr, &emptySrvDescriptor, cbv_srv_heap_handle);
+
 	// Create texture
-	std::string texFile = "models/default.png";
-	int texWidth, texHeight, texChannels;
-	unsigned char *image = stbi_load(texFile.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	unsigned int heapIndex = 2;
+	for (unsigned int material_id = 0; material_id < modelLoader.GetMaterialNumber(); material_id++) {
+		if (!modelLoader.HasTexture(material_id)) {
+			per_material_srv_offset[material_id] = 1;
+			continue;
+		}
 
-	D3D12_RESOURCE_DESC textureDescriptor = {};
-	textureDescriptor.Width = texWidth;
-	textureDescriptor.Height = texHeight;
-	textureDescriptor.DepthOrArraySize = 1;
-	textureDescriptor.MipLevels = 1;
-	textureDescriptor.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	textureDescriptor.SampleDesc.Count = 1;
-	textureDescriptor.SampleDesc.Quality = 0;
-	textureDescriptor.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	textureDescriptor.Flags = D3D12_RESOURCE_FLAG_NONE;
+		std::string texFile = modelLoader.GetTexturePath(material_id);
+		int texWidth, texHeight, texChannels;
+		unsigned char *image = stbi_load(texFile.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&textureDescriptor,
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&texture))
-	);
-	texture->SetName(L"Texture data");
+		D3D12_RESOURCE_DESC textureDescriptor = {};
+		textureDescriptor.Width = texWidth;
+		textureDescriptor.Height = texHeight;
+		textureDescriptor.DepthOrArraySize = 1;
+		textureDescriptor.MipLevels = 1;
+		textureDescriptor.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		textureDescriptor.SampleDesc.Count = 1;
+		textureDescriptor.SampleDesc.Quality = 0;
+		textureDescriptor.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		textureDescriptor.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-	const UINT64 upload_buffer_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
+		ComPtr<ID3D12Resource> texture;
+		ComPtr<ID3D12Resource> upload_texture;
 
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(upload_buffer_size),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&upload_texture))
-	);
+		ThrowIfFailed(device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&textureDescriptor,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&texture))
+		);
+		texture->SetName(L"Texture data");
 
-	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = image;
-	textureData.RowPitch = texWidth * STBI_rgb_alpha;
-	textureData.SlicePitch = textureData.RowPitch * texHeight;
+		const UINT64 upload_buffer_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
 
-	UpdateSubresources(command_list.Get(), texture.Get(), upload_texture.Get(), 0, 0, 1, &textureData);
-	command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		texture.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	));
+		ThrowIfFailed(device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(upload_buffer_size),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&upload_texture))
+		);
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDescriptor = {};
-	srvDescriptor.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDescriptor.Format = textureDescriptor.Format;
-	srvDescriptor.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDescriptor.Texture2D.MipLevels = 1;
+		D3D12_SUBRESOURCE_DATA textureData = {};
+		textureData.pData = image;
+		textureData.RowPitch = texWidth * STBI_rgb_alpha;
+		textureData.SlicePitch = textureData.RowPitch * texHeight;
 
-	device->CreateShaderResourceView(texture.Get(), &srvDescriptor, cbv_srv_heap_handle);
+		UpdateSubresources(command_list.Get(), texture.Get(), upload_texture.Get(), 0, 0, 1, &textureData);
+		command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			texture.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+		));
+
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDescriptor = {};
+		srvDescriptor.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDescriptor.Format = textureDescriptor.Format;
+		srvDescriptor.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDescriptor.Texture2D.MipLevels = 1;
+
+		cbv_srv_heap_handle.InitOffsetted(cbv_srv_heap->GetCPUDescriptorHandleForHeapStart(), heapIndex, cbv_srv_descriptor_size);
+		device->CreateShaderResourceView(texture.Get(), &srvDescriptor, cbv_srv_heap_handle);
+
+		per_material_srv_offset[material_id] = heapIndex;
+		heapIndex++;
+		textures.push_back(texture);
+		upload_textures.push_back(upload_texture);
+	}
 
 	ThrowIfFailed(command_list->Close());
 	ID3D12CommandList *command_lists[] = {command_list.Get()};
@@ -488,7 +547,7 @@ void Renderer::LoadAssets() {
 void Renderer::PopulateCommandList() {
 	// Reset allocators and lists
 	ThrowIfFailed(command_allocator->Reset());
-	ThrowIfFailed(command_list->Reset(command_allocator.Get(), pipeline_state.Get()));
+	ThrowIfFailed(command_list->Reset(command_allocator.Get(), pipeline_state_color.Get()));
 
 
 	// Set initial state
@@ -526,6 +585,16 @@ void Renderer::PopulateCommandList() {
 	command_list->IASetIndexBuffer(&index_buffer_view);
 
 	for (unsigned int material_id = 0; material_id < modelLoader.GetMaterialNumber() && material_id < max_draw_call_num; material_id++) {
+		UINT offset = per_material_srv_offset[material_id];
+		cbv_srv_handle.InitOffsetted(cbv_srv_heap->GetGPUDescriptorHandleForHeapStart(), offset, cbv_srv_descriptor_size);
+		command_list->SetGraphicsRootDescriptorTable(1, cbv_srv_handle);
+
+		if (modelLoader.HasTexture(material_id)) {
+			command_list->SetPipelineState(pipeline_state_texture.Get());
+		} else {
+			command_list->SetPipelineState(pipeline_state_color.Get());
+		}
+
 		DrawCallParams params = modelLoader.GetDrawCallParams(material_id);
 		command_list->DrawIndexedInstanced(params.index_num, 1, params.start_index, params.start_vertex, 0);
 	}

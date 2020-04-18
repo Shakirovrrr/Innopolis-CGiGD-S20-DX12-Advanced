@@ -26,11 +26,18 @@ public:
 
 	const unsigned int GetMaterialNumber() const;
 	const DrawCallParams GetDrawCallParams(unsigned int material_id) const;
+	const std::string GetTexturePath(unsigned int material_id) const;
+	const bool HasTexture(unsigned int material_id) const;
+	const unsigned int GetTextureNumber() const;
 
 protected:
+	std::string obj_path;
+
 	std::vector<FullVertex> vertices;
 	std::vector<unsigned int> indices;
 	std::vector<tinyobj::material_t> materials;
+
+	std::vector<DrawCallParams> per_material_draw_call_params;
 
 	std::string GetBinPath(std::string shader_file);
 };

@@ -3,9 +3,11 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
+typedef std::map<std::tuple<int, int, int>, unsigned int> index_map_type;
+
 HRESULT ModelLoader::LoadModel(std::string path) {
 	// Create and upload vertex buffer
-	std::string obj_path = GetBinPath(std::string());
+	obj_path = GetBinPath(std::string());
 	std::string obj_file = obj_path + path;
 
 	tinyobj::attrib_t attrib;
@@ -33,7 +35,10 @@ HRESULT ModelLoader::LoadModel(std::string path) {
 		return E_ABORT;
 	}
 
-	std::map<std::tuple<int, int, int>, unsigned int> indices_map;
+	//index_map_type indices_map;
+	std::vector<std::vector<FullVertex>> per_material_vertices(materials.size());
+	std::vector<std::vector<unsigned int>> per_material_indices(materials.size());
+	std::vector<index_map_type> per_material_indices_map(materials.size());
 
 	// Loop over shapes
 	for (size_t s = 0; s < shapes.size(); s++) {
@@ -44,14 +49,14 @@ HRESULT ModelLoader::LoadModel(std::string path) {
 
 			// Loop over vertices in the face.
 			// per-face material
-			int material_ids = shapes[s].mesh.material_ids[f];
+			int material_id = shapes[s].mesh.material_ids[f];
 			for (size_t v = 0; v < fv; v++) {
 				// access to vertex
 				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 				std::tuple<int, int, int> idx_tuple = std::make_tuple(idx.vertex_index, idx.normal_index, idx.texcoord_index);
 
-				if (indices_map.count(idx_tuple) > 0) {
-					indices.push_back(indices_map[idx_tuple]);
+				if (per_material_indices_map[material_id].count(idx_tuple) > 0) {
+					per_material_indices[material_id].push_back(per_material_indices_map[material_id][idx_tuple]);
 				} else {
 
 					tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
@@ -63,26 +68,39 @@ HRESULT ModelLoader::LoadModel(std::string path) {
 					tinyobj::real_t tu = (idx.texcoord_index > -1) ? attrib.texcoords[2 * idx.texcoord_index + 0] : 0.0f;
 					tinyobj::real_t tv = (idx.texcoord_index > -1) ? 1.0f - attrib.texcoords[2 * idx.texcoord_index + 1] : 0.0f;
 
-					materials[material_ids].diffuse;
+					materials[material_id].diffuse;
 
 					FullVertex vertex = {};
 					vertex.position = {vx, vy, vz};
 					vertex.normal = {nx, ny, nz};
 					vertex.texcoord = {tu, tv};
 					vertex.diffuseColor = {
-						materials[material_ids].diffuse[0],
-						materials[material_ids].diffuse[1],
-						materials[material_ids].diffuse[2]
+						materials[material_id].diffuse[0],
+						materials[material_id].diffuse[1],
+						materials[material_id].diffuse[2]
 					};
 
-					indices.push_back(vertices.size());
-					indices_map[idx_tuple] = vertices.size();
-					vertices.push_back(vertex);
+					per_material_indices[material_id].push_back(per_material_vertices[material_id].size());
+					per_material_indices_map[material_id][idx_tuple] = per_material_vertices[material_id].size();
+					per_material_vertices[material_id].push_back(vertex);
 				}
 			}
 			index_offset += fv;
 		}
 	};
+
+	for (size_t material_id = 0; material_id < GetMaterialNumber(); material_id++) {
+		DrawCallParams param = {};
+		param.index_num = static_cast<unsigned int>(indices.size());
+		param.start_index = indices.size();
+		param.start_vertex = vertices.size();
+
+		vertices.insert(end(vertices), begin(per_material_vertices[material_id]), end(per_material_vertices[material_id]));
+		indices.insert(end(indices), begin(per_material_indices[material_id]), end(per_material_indices[material_id]));
+
+		param.index_num = static_cast<unsigned int>(per_material_indices[material_id].size());
+		per_material_draw_call_params.push_back(param);
+	}
 
 	return S_OK;
 }
@@ -116,11 +134,26 @@ const unsigned int ModelLoader::GetMaterialNumber() const {
 }
 
 const DrawCallParams ModelLoader::GetDrawCallParams(unsigned int material_id) const {
-	DrawCallParams param = {};
-	param.index_num = static_cast<unsigned int>(indices.size());
-	param.start_index = 0;
-	param.start_vertex = 0;
-	return param;
+	return per_material_draw_call_params[material_id];
+}
+
+const std::string ModelLoader::GetTexturePath(unsigned int material_id) const {
+	return obj_path + "\\" + materials[material_id].diffuse_texname;
+}
+
+const bool ModelLoader::HasTexture(unsigned int material_id) const {
+	return !materials[material_id].diffuse_texname.empty();
+}
+
+const unsigned int ModelLoader::GetTextureNumber() const {
+	unsigned int texture_num = 0;
+	for (unsigned int  material_id = 0; material_id < materials.size(); material_id++) {
+		if (HasTexture(material_id)) {
+			texture_num++;
+		}
+	}
+
+	return texture_num;
 }
 
 std::string ModelLoader::GetBinPath(std::string shader_file) {
