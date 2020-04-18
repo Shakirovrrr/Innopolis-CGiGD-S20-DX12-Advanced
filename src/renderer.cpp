@@ -61,10 +61,10 @@ void Renderer::OnKeyDown(UINT8 key) {
 			velocityRotation = -1.0f;
 			break;
 		case 'W':
-			velocityForward = 1.0f;
+			velocityForward = 2.0f;
 			break;
 		case 'S':
-			velocityForward = -1.0f;
+			velocityForward = -2.0f;
 			break;
 
 		case 'I':
@@ -76,7 +76,7 @@ void Renderer::OnKeyDown(UINT8 key) {
 		case 'L':
 			lightVelocityY = 1.0f;
 			break;
-		case 'j':
+		case 'J':
 			lightVelocityY = -1.0f;
 			break;
 		case 'O':
@@ -130,7 +130,7 @@ void Renderer::OnKeyUp(UINT8 key) {
 		case 'L':
 			lightVelocityY = 0.0f;
 			break;
-		case 'j':
+		case 'J':
 			lightVelocityY = 0.0f;
 			break;
 		case 'O':
